@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>알버트 알람 게임</title>
+  <style>
+    :root { --w: min(92vw, 560px); }
+
+    body{
+      margin:0; background:#111; color:#fff;
+      font-family: system-ui, -apple-system, "Noto Sans KR", sans-serif;
+      display:grid; place-items:center; min-height:100vh;
+      user-select:none;
+    }
+    .wrap{ width:var(--w); }
+
+    .hud{
+      display:flex; justify-content:space-between; align-items:center;
+      gap:8px; margin:10px 4px; font-size:14px;
+    }
+    .pill{
+      background:rgba(255,255,255,.10);
+      border:1px solid rgba(255,255,255,.18);
+      padding:6px 10px; border-radius:999px;
+      display:inline-flex; gap:8px; align-items:center;
+      white-space:nowrap;
+    }
+    button{
+      background:rgba(255,255,255,.14);
+      border:1px solid rgba(255,255,255,.22);
+      color:#fff; padding:6px 12px;
+      border-radius:10px; cursor:pointer;
+    }
+
+    .stage{
+      position:relative;
+      width:100%;
+      aspect-ratio: 1 / 1;
+      border-radius:18px;
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,.18);
+      box-shadow: 0 10px 30px rgba(0,0,0,.5);
+      background:#222;
+    }
+    .bg{
+      position:absolute; inset:0;
+      background: url("assets/background.png") center/cover no-repeat;
+    }
+
+    /* 안내 문구 */
+    .msg{
+      position:absolute; left:50%; top:10px; transform:translateX(-50%);
+      padding:8px 12px;
+      background: rgba(0,0,0,.35);
+      border:1px solid rgba(255,255,255,.18);
+      border-radius: 12px;
+      font-size:14px;
+      white-space:nowrap;
+      z-index: 5;
+    }
+
+    /* ===== 시계 구조(중요) =====
+       .clock      = 위치(translate -50,-50) 담당 (절대 흔들리면 안 됨)
+       .clockInner = 흔들림 애니메이션 담당
+    */
+    .clock{
+      position:absolute;
+      width:125px; height:125px;
+      cursor:pointer;
+      left:0; top:0;
+      transform: translate(-50%, -50%);
+      touch-action: manipulation;
+      z-index: 3;
+    }
+    .clockInner{
+      width:100%; height:100%;
+      transform-origin: 50% 60%;
+    }
+    .clock img{
+      width:100%; height:100%; display:block;
+    }
+
+    /* 울림 효과: clockInner에만 적용 (위치 transform과 충돌 없음) */
+    .clock.ringing .clockInner{
+      animation: shakeClock .12s infinite alternate;
+      filter: drop-shadow(0 0 10px rgba(255,220,120,.55));
+    }
+    @keyframes shakeClock{
+      from{ transform: rotate(-2deg) translateY(-1px); }
+      to  { transform: rotate( 2deg) translateY( 1px); }
+    }
+
+    /* ===== 중앙 큰 시계(배경 속) 투명 터치 영역 ===== */
+    .centerHotspot{
+      position:absolute;
+      left: 50%;
+      top: 41%;
+      width: 46%;
+      height: 46%;
+      transform: translate(-50%, -50%);
+      border-radius: 999px;
+      background: rgba(255,255,255,0);
+      cursor:pointer;
+      z-index: 4; /* 시계보다 위여야 클릭됨 */
+
+      /* 개발 중 위치 확인용: 필요없으면 지워도 됨 */
+      outline: 2px dashed rgba(255,255,255,.15);
+    }
+
+    /* 중앙 울림 표시: transform 건드리지 않고 ::after로 라운드만 */
+    .centerHotspot::after{
+      content:"";
+      position:absolute; inset:0;
+      border-radius:999px;
+      opacity:0;
+      pointer-events:none;
+    }
+    .centerHotspot.ringing::after{
+      opacity:1;
+      box-shadow: 0 0 0 6px rgba(255,220,120,.20), 0 0 16px rgba(255,220,120,.35);
+      outline: 4px solid rgba(255,220,120,.75);
+      animation: pulse 0.6s infinite alternate;
+    }
+    @keyframes pulse{
+      from{ transform: scale(0.995); }
+      to  { transform: scale(1.01); }
+    }
+
+    .overlay{
+      position:absolute; inset:0;
+      display:none; place-items:center;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(4px);
+      z-index: 10;
+    }
+    .overlay.show{ display:grid; }
+    .card{
+      width:min(90%, 360px);
+      background: rgba(255,255,255,.10);
+      border:1px solid rgba(255,255,255,.18);
+      border-radius:18px;
+      padding:16px;
+      text-align:center;
+    }
+    .card h2{ margin:0 0 8px; }
+    .card p{ margin:0 0 14px; opacity:.9; line-height:1.4; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+<div class="hud">
+  <div class="pill">⏱ <span id="time">15.0</span>s</div>
+  <div class="pill">✅ 점수 <span id="score">0</span></div>
+
+  <button id="btnStart">시작</button>
+  <button id="btnPause">일시정지</button>
+  <button id="btnStop">정지</button>
+</div>    <div class="stage" id="stage">
+      <div class="bg"></div>
+      <div class="msg" id="msg">시작을 누르면 알람이 울려!</div>
+
+      <div class="centerHotspot" id="centerHotspot" title="중앙 시계"></div>
+
+      <div class="overlay" id="overlay">
+        <div class="card">
+          <h2>게임 끝!</h2>
+          <p id="overDesc">점수: 0</p>
+          <button id="btnRestart">다시하기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const stage = document.getElementById("stage");
+  const timeEl = document.getElementById("time");
+  const scoreEl = document.getElementById("score");
+  const msgEl = document.getElementById("msg");
+  const overlay = document.getElementById("overlay");
+  const overDesc = document.getElementById("overDesc");
+  const btnStart = document.getElementById("btnStart");
+  const btnRestart = document.getElementById("btnRestart");
+  const centerHotspot = document.getElementById("centerHotspot");
+const btnPause = document.getElementById("btnPause");
+const btnStop  = document.getElementById("btnStop");
+
+  // ===== 설정 =====
+  const CONFIG = {
+    timeLimit: 15,
+    clocks: 11,
+    ringingMin: 1,
+    ringingMax: 3,
+    wrongPenalty: 0.6,
+    centerChance: 0.30,       // 테스트용: 중앙 항상 울림 (원하면 0.2로)
+    centerTapsToStop: 2,
+    beepIntervalMs: 350
+  };
+
+  // 네가 찍은 12개 좌표(퍼센트)
+  const SLOTS = [
+    {x: 14.8, y: 14.6},
+    {x: 16.7, y: 32.5},
+    {x: 14.8, y: 46.9},
+    {x: 24.3, y: 63.2},
+    {x: 15.0, y: 79.1},
+    {x: 60.6, y: 69.9},
+    {x: 82.1, y: 73.1},
+    {x: 85.1, y: 62.2},
+    {x: 86.7, y: 47.6},
+    {x: 80.3, y: 31.0},
+    {x: 82.6, y: 15.4},
+  ];
+
+  // ===== 오디오(종이 클릭) =====
+  let audioCtx = null;
+  let clickTimer = null;
+
+  function ensureAudio(){
+    if(!audioCtx){
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if(audioCtx.state === "suspended") audioCtx.resume();
+  }
+
+  function paperClick(){
+    if(!audioCtx) return;
+    const noise = audioCtx.createBufferSource();
+    const buffer = audioCtx.createBuffer(1, 2205, 44100);
+    const data = buffer.getChannelData(0);
+
+    for(let i=0; i<data.length; i++){
+      data[i] = (Math.random() * 2 - 1) * (1 - i/data.length);
+    }
+    noise.buffer = buffer;
+
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = "highpass";
+    filter.frequency.value = 1400;
+
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0.14;
+
+    noise.connect(filter).connect(gain).connect(audioCtx.destination);
+    noise.start();
+  }
+
+  function startBeepLoop(){
+    stopBeepLoop();
+    paperClick();
+    clickTimer = setInterval(() => paperClick(), CONFIG.beepIntervalMs);
+  }
+  function stopBeepLoop(){
+    if(clickTimer) clearInterval(clickTimer);
+    clickTimer = null;
+  }
+
+  // ===== 게임 상태 =====
+  let clockEls = [];
+  let ringing = new Set();
+  let centerRinging = false;
+  let centerTapLeft = CONFIG.centerTapsToStop;
+
+  let timeLeft = CONFIG.timeLimit;
+  let score = 0;
+  let running = false;
+  let paused = false;
+  let lastTs = null;
+  let rafId = null;
+
+  function setMsg(t){ msgEl.textContent = t; }
+
+  // 이미지 로딩이 완료돼야 “점프”가 안 생겨서, startGame에서 기다림
+  function preloadClocks(){
+    const promises = [];
+    for(let i=1;i<=CONFIG.clocks;i++){
+      const src = `assets/clock_${String(i).padStart(2,"0")}.png`;
+      promises.push(new Promise((resolve) => {
+        const im = new Image();
+        im.onload = () => resolve();
+        im.onerror = () => resolve(); // 없어도 게임은 돌게
+        im.src = src;
+      }));
+    }
+    return Promise.all(promises);
+  }
+
+  function clearClocks(){
+    clockEls.forEach(el => el.remove());
+    clockEls = [];
+  }
+
+  function createClocks(){
+    clearClocks();
+    for(let i=1;i<=CONFIG.clocks;i++){
+      const el = document.createElement("div");
+      el.className = "clock";
+      el.dataset.idx = String(i-1);
+
+      const inner = document.createElement("div");
+      inner.className = "clockInner";
+
+      const img = document.createElement("img");
+      img.src = `assets/clock_${String(i).padStart(2,"0")}.png`;
+      img.alt = `clock_${i}`;
+
+      inner.appendChild(img);
+      el.appendChild(inner);
+
+      el.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        ensureAudio();
+        onClockTap(i-1);
+      });
+
+      stage.appendChild(el);
+      clockEls.push(el);
+    }
+  }
+
+  function placeClocksRandom(){
+    const slots = [...SLOTS].sort(() => Math.random() - 0.5);
+
+    // ✅ 레이아웃이 안정된 다음 프레임에 배치(점프 방지)
+    requestAnimationFrame(() => {
+      clockEls.forEach((el, idx) => {
+        const s = slots[idx];
+        el.style.left = `${s.x}%`;
+        el.style.top  = `${s.y}%`;
+      });
+    });
+  }
+
+  function pickRinging(){
+    ringing.clear();
+    clockEls.forEach(el => el.classList.remove("ringing"));
+    centerHotspot.classList.remove("ringing");
+    centerRinging = false;
+    centerTapLeft = CONFIG.centerTapsToStop;
+
+    const count = randInt(CONFIG.ringingMin, CONFIG.ringingMax);
+    while(ringing.size < count){
+      ringing.add(Math.floor(Math.random() * CONFIG.clocks));
+    }
+    for(const idx of ringing){
+      clockEls[idx].classList.add("ringing");
+    }
+
+    if(Math.random() < CONFIG.centerChance){
+      centerRinging = true;
+      centerHotspot.classList.add("ringing");
+    }
+
+    startBeepLoop();
+    setMsg("🔊 울리는 시계를 모두 눌러서 꺼!");
+  }
+
+  function onClockTap(idx){
+    if(!running) return;
+    if(paused) return;
+
+    if(ringing.has(idx)){
+      ringing.delete(idx);
+      clockEls[idx].classList.remove("ringing");
+      score += 1;
+      scoreEl.textContent = String(score);
+
+      if(ringing.size === 0 && !centerRinging){
+        nextRound();
+      }
+    } else {
+      timeLeft = Math.max(0, timeLeft - CONFIG.wrongPenalty);
+      timeEl.textContent = timeLeft.toFixed(1);
+      setMsg("❌ 아냐! (시간 -0.6초)");
+    }
+  }
+
+  centerHotspot.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    ensureAudio();
+    if(!running) return;
+    if(paused) return;
+
+    if(!centerRinging){
+      timeLeft = Math.max(0, timeLeft - CONFIG.wrongPenalty);
+      timeEl.textContent = timeLeft.toFixed(1);
+      setMsg("❌ 중앙은 지금 안 울려! (시간 -0.6초)");
+      return;
+    }
+
+    centerTapLeft -= 1;
+    if(centerTapLeft > 0){
+      setMsg("중앙 시계! 한 번 더!");
+      return;
+    }
+
+    centerRinging = false;
+    centerHotspot.classList.remove("ringing");
+    score += 2;
+    scoreEl.textContent = String(score);
+
+    if(ringing.size === 0){
+      nextRound();
+    } else {
+      setMsg("✅ 중앙 껐어! 나머지도 꺼!");
+    }
+  });
+
+  function nextRound(){
+    stopBeepLoop();
+    placeClocksRandom();
+    pickRinging();
+  }
+
+  async function startGame(){
+  overlay.classList.remove("show");
+  running = true;
+  paused = false;
+  setButtons();
+    score = 0;
+    timeLeft = CONFIG.timeLimit;
+    scoreEl.textContent = "0";
+    timeEl.textContent = timeLeft.toFixed(1);
+
+    ensureAudio();
+
+    await preloadClocks();     // ✅ 점프/깜빡임 최소화
+    createClocks();
+    placeClocksRandom();
+    pickRinging();
+
+    lastTs = null;
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function endGame(){
+    running = false;
+    stopBeepLoop();
+    overlay.classList.add("show");
+    overDesc.textContent = `점수: ${score}`;
+    setMsg("다시하기를 눌러!");
+  }
+
+  function tick(ts){
+    if(!running) return;
+    if(lastTs == null) lastTs = ts;
+    const dt = (ts - lastTs)/1000;
+    lastTs = ts;
+
+    timeLeft -= dt;
+    if(timeLeft <= 0){
+      timeLeft = 0;
+      timeEl.textContent = "0.0";
+      endGame();
+      return;
+    }
+    timeEl.textContent = timeLeft.toFixed(1);
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function randInt(a,b){
+    return Math.floor(Math.random()*(b-a+1))+a;
+  }
+
+  btnStart.addEventListener("click", startGame);
+  btnRestart.addEventListener("click", startGame);
+function setButtons(){
+  // 실행 중 아닐 때: Pause/Stop 비활성
+  btnPause.disabled = !running;
+  btnStop.disabled  = !running;
+
+  // 일시정지 상태면 버튼 글자 바꾸기
+  btnPause.textContent = paused ? "계속하기" : "일시정지";
+}
+
+function pauseToggle(){
+  if(!running) return;
+
+  paused = !paused;
+
+  if(paused){
+    // 시간 멈추고, 소리도 멈추기
+    stopBeepLoop();
+    cancelAnimationFrame(rafId);
+    setMsg("⏸️ 일시정지");
+  }else{
+    // 다시 시작(시간 계산 재시작)
+    lastTs = null;
+
+    // 울리는 게 있으면 소리 다시
+    if(ringing.size > 0 || centerRinging){
+      startBeepLoop();
+    }
+
+    rafId = requestAnimationFrame(tick);
+    setMsg("▶️ 계속!");
+  }
+
+  setButtons();
+}
+
+function stopGame(){
+  // 완전 중지(처음 상태로)
+  running = false;
+  paused = false;
+  stopBeepLoop();
+  cancelAnimationFrame(rafId);
+
+  // 울림 표시 제거
+  ringing.clear();
+  clockEls.forEach(el => el.classList.remove("ringing"));
+  centerHotspot.classList.remove("ringing");
+  centerRinging = false;
+
+  // 화면 정리
+  overlay.classList.remove("show");
+  clearClocks();
+
+  // 수치 리셋(원하면 시간/점수 유지도 가능하지만, 일단 깔끔하게 리셋)
+  score = 0;
+  timeLeft = CONFIG.timeLimit;
+  scoreEl.textContent = "0";
+  timeEl.textContent = timeLeft.toFixed(1);
+
+  setMsg("⏹ 정지됨. 시작을 누르면 다시 시작!");
+  setButtons();
+}
+
+// 버튼 연결
+btnPause.addEventListener("click", pauseToggle);
+btnStop.addEventListener("click", stopGame);
+
+// 시작/재시작 함수 맨 끝에 이 줄 추가하면 버튼 상태가 맞춰짐
+// setButtons();
+
+setMsg("시작을 눌러!");
+setButtons();
+})();
+</script>
+</body>
+</html>
