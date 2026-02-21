@@ -45,7 +45,7 @@
     }
     .bg{
       position:absolute; inset:0;
-      background: url("assets/background.png") center/cover no-repeat;
+      background: url("background.png") center/cover no-repeat;
     }
 
     /* 안내 문구 */
@@ -276,7 +276,7 @@ const btnStop  = document.getElementById("btnStop");
   function preloadClocks(){
     const promises = [];
     for(let i=1;i<=CONFIG.clocks;i++){
-      const src = `assets/clock_${String(i).padStart(2,"0")}.png`;
+      const src = `clock_${String(i).padStart(2,"0")}.png`;
       promises.push(new Promise((resolve) => {
         const im = new Image();
         im.onload = () => resolve();
@@ -541,4 +541,5 @@ setButtons();
 })();
 </script>
 </body>
+
 </html>
