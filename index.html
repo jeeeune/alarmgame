@@ -303,7 +303,7 @@ const btnStop  = document.getElementById("btnStop");
       inner.className = "clockInner";
 
       const img = document.createElement("img");
-      img.src = `assets/clock_${String(i).padStart(2,"0")}.png`;
+      img.src = `clock_${String(i).padStart(2,"0")}.png`;
       img.alt = `clock_${i}`;
 
       inner.appendChild(img);
@@ -543,3 +543,4 @@ setButtons();
 </body>
 
 </html>
+
