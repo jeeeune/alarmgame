@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>알버트 알람 게임</title>
   <style>
     :root { --w: min(92vw, 560px); }
@@ -12,6 +12,9 @@
       font-family: system-ui, -apple-system, "Noto Sans KR", sans-serif;
       display:grid; place-items:center; min-height:100vh;
       user-select:none;
+        -webkit-user-select: none;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
     }
     .wrap{ width:var(--w); }
 
@@ -103,6 +106,8 @@
       background: rgba(255,255,255,0);
       cursor:pointer;
       z-index: 4; /* 시계보다 위여야 클릭됨 */
+        touch-action: manipulation;
+        -webkit-user-select: none;
 
       /* 개발 중 위치 확인용: 필요없으면 지워도 됨 */
       outline: 2px dashed rgba(255,255,255,.15);
@@ -145,6 +150,30 @@
     }
     .card h2{ margin:0 0 8px; }
     .card p{ margin:0 0 14px; opacity:.9; line-height:1.4; }
+    @media (max-width: 480px){
+  :root { --w: min(96vw, 420px); }
+
+  .hud{
+    font-size: 13px;
+    gap: 6px;
+  }
+  button{
+    padding: 6px 10px;
+  }
+
+  /* ✅ 모바일에서 일반 시계 크기 75px */
+  .clock{
+    width: 75px;
+    height: 75px;
+  }
+
+  /* ✅ 중앙 터치영역도 살짝 줄이기(선택이지만 추천) */
+  .centerHotspot{
+    width: 40%;
+    height: 40%;
+    top: 41%;
+  }
+}
   </style>
 </head>
 
@@ -175,6 +204,9 @@
 
 <script>
 (() => {
+  document.addEventListener('dblclick', function(e) {
+  e.preventDefault();
+}, { passive: false });
   const stage = document.getElementById("stage");
   const timeEl = document.getElementById("time");
   const scoreEl = document.getElementById("score");
@@ -543,4 +575,5 @@ setButtons();
 </body>
 
 </html>
+
 
